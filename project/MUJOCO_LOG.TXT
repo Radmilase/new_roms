@@ -28,3 +28,6 @@ ERROR: mjv_updateSceneState: m->nu changed
 Tue Dec 30 16:45:06 2025
 ERROR: mjv_updateSceneState: m->nu changed
 
+Mon Jan 12 14:15:13 2026
+WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand_manipulate_clock.xml'
+
