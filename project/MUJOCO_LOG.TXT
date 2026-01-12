@@ -1,0 +1,30 @@
+Tue Dec 30 14:39:17 2025
+WARNING: mju_openResource: unknown file 'c:\Users\d_v_o\Desktop\ROMS\project\custom_envs/shared.xml'
+
+Tue Dec 30 14:46:25 2025
+WARNING: mju_openResource: unknown file 'c:\Users\d_v_o\anaconda3\envs\dexgrasp\lib\site-packages\gymnasium_robotics\envs\hand\assets\hand_manipulate_clock.xml'
+
+Tue Dec 30 14:47:09 2025
+WARNING: mju_openResource: unknown file 'c:\Users\d_v_o\anaconda3\envs\dexgrasp\lib\site-packages\gymnasium_robotics\envs\hand\assets\hand_manipulate_clock.xml'
+
+Tue Dec 30 15:30:20 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 15:30:44 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 15:36:46 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 16:28:44 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 16:40:12 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 16:41:14 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
+Tue Dec 30 16:45:06 2025
+ERROR: mjv_updateSceneState: m->nu changed
+
