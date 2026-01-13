@@ -46,9 +46,9 @@
         <camera
             name="main_camera"
             mode="fixed"
-            pos="1.00 1.35 0.60"
-            quat="0.707 0 0.707 0"/>
-
+            pos="1 1 1"/>
+            <!-- quat="0.707 0 0.707 0" -->
+    
     </worldbody>
 
 </mujoco>

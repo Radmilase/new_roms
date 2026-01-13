@@ -31,3 +31,15 @@ ERROR: mjv_updateSceneState: m->nu changed
 Mon Jan 12 14:15:13 2026
 WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand_manipulate_clock.xml'
 
+Tue Jan 13 17:11:33 2026
+WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand\hand_manipulate_block.xml'
+
+Tue Jan 13 17:11:38 2026
+WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand\hand_manipulate_block.xml'
+
+Tue Jan 13 17:17:32 2026
+WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand\manipulate_block_sensors.xml'
+
+Tue Jan 13 17:17:43 2026
+WARNING: mju_openResource: unknown file 'C:\Users\rad\itmo\new_roms\project\models\hand\manipulate_block_sensors.xml'
+
