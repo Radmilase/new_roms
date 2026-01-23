@@ -1,3 +1,22 @@
+# ============================================================
+# Shadow Dexterous Hand (V3) — multi-XML random search + NEW grasp metrics
+# Adds (per trial + visual summary, formatted like BASE):
+#   - CGF (Contact Grasp Flag)
+#   - GD  (Grasp Duration = max CGF streak)
+#   - CE@Grasp (Contact Entropy during CGF)
+#   - Drift@Grasp (P95)
+#   - Speed@Grasp (P95)
+#   - EDR (Environment Dependency Ratio)
+#   - Avg tip_sum@Grasp
+#
+# Output format: like your BASE:
+#   SUCCESS=... hold=... con_hand=... con_env=... con=... z=...
+#   drift=... speed=... driftP95=... speedP95=...
+#   bad_drift=... bad_speed=... tip_active=... tip_sum=... palm_sum=...
+#   hold_tip_avg=... streak=GD ... EDR=... CGF=... CEg=... tipg=...
+#   + per-finger touches FF..TH
+# ============================================================
+
 import os, time
 import numpy as np
 import mujoco
@@ -10,12 +29,10 @@ import mujoco.viewer
 ROOT_DIR = r"C:\Users\rad\itmo\new_roms"
 
 XML_LIST = [
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "hand_manipulate_clock.xml"),
-
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_block_touch_sensors.xml"),
-    os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml"),
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml"),
-    # 
+    # os.path.join(ROOT_DIR, "project", "models", "hand", "v3_manipulate_block_touch_sensors.xml"),
+    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml"),
+    os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml"),
+    # os.path.join(ROOT_DIR, "project", "models", "hand", "v3_hand_manipulate_clock.xml")
 ]
 
 # -------------------------------
@@ -24,8 +41,8 @@ XML_LIST = [
 OPEN_STEPS  = 40
 CLOSE_STEPS = 120
 HOLD_STEPS  = 200
-Z_START_CLOSE = 0.22  
-MAX_OPEN_STEPS = 200 
+Z_START_CLOSE = 0.22
+MAX_OPEN_STEPS = 200
 
 MIN_CLOSE_STEPS_BEFORE_LATCH = 15
 
@@ -33,16 +50,29 @@ Z_MIN      = 0.05
 V_MAX      = 2.0
 DRIFT_MAX  = 0.25
 SUCCESS_HOLD_RATIO = 0.90
-# дополнительные ограничения на "реальный" захват
+
+# дополнительные ограничения на "реальный" захват (для success)
 MIN_CONTACTS_AFTER_CLOSE = 3
 MIN_TIP_ACTIVE_AFTER_CLOSE = 1
 MIN_TIP_SUM_AFTER_CLOSE    = 0.25
 
 # -------------------------------
+# NEW GRASP METRIC CONFIG (CGF/GD/CE/DriftP95/SpeedP95/EDR/tip_sum@grasp)
+# -------------------------------
+# CGF thresholding
+CGF_MIN_TIP_ACTIVE = 2
+CGF_TAU_TIP_SUM    = 0.05   # порог "суммарного контакта" для grasp
+CGF_STREAK_MIN     = 10     # минимальная длина непрерывного grasp, чтобы считать CGF_stable=1
+
+# For "bad drift / bad speed" counters (diagnostic)
+DRIFT_BAD_THR = 0.10
+SPEED_BAD_THR = 0.80
+
+# -------------------------------
 # OPTIMIZER CONFIG
 # -------------------------------
-EVAL_TRIALS_PER_THETA = 5      # <-- КАК ТЫ ПРОСИЛА: каждый theta оцениваем 5 раз
-RANDOM_ITERS = 25              # <-- чтобы не было тысяч запусков (поднимешь позже)
+EVAL_TRIALS_PER_THETA = 5
+RANDOM_ITERS = 25
 SEED0 = 2000
 
 # -------------------------------
@@ -67,10 +97,10 @@ PENALTY_NO_LF   = 0.15
 # -------------------------------
 # RENDER SETTINGS
 # -------------------------------
-SLOWDOWN = 2.0               # замедление визуализации в 2 раза
-RENDER_BASELINES = True      # показать baseline A/B (по 1 траю)
-RENDER_EVERY_N_THETA = 10    # в поиске показывать каждый N-й theta (по 1 траю)
-VISUAL_TRIALS = 5            # показать best_theta 5 раз (как в эталоне)
+SLOWDOWN = 2.0
+RENDER_BASELINES = True
+RENDER_EVERY_N_THETA = 10
+VISUAL_TRIALS = 5
 
 
 def run_for_xml(XML_PATH: str):
@@ -92,7 +122,6 @@ def run_for_xml(XML_PATH: str):
     data  = mujoco.MjData(model)
 
     DT = float(model.opt.timestep)
-    # "замедление" = добавляем sleep после каждого mj_step
     EXTRA_SLEEP_PER_STEP = max(0.0, DT * (SLOWDOWN - 1.0))
 
     p("Scene loaded successfully")
@@ -107,11 +136,9 @@ def run_for_xml(XML_PATH: str):
     obj_bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, OBJ_BODY_NAME)
     if obj_bid < 0:
         raise RuntimeError(f"[{xml_tag}] Body '{OBJ_BODY_NAME}' not found in XML.")
-
     obj_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, OBJ_JOINT_NAME)
     if obj_jid < 0:
         raise RuntimeError(f"[{xml_tag}] Joint '{OBJ_JOINT_NAME}' not found. Check your XML joint name.")
-
     obj_qpos_adr = int(model.jnt_qposadr[obj_jid])  # free joint: qpos[adr:adr+7]
 
     # -------------------------------
@@ -163,17 +190,35 @@ def run_for_xml(XML_PATH: str):
     p(f"Actuators per finger: { {k: len(v) for k, v in FINGER_ACT.items()} }")
 
     # -------------------------------
-    # CONTACT COUNT (hand-object)
+    # CONTACTS: split object contacts into hand vs env
     # -------------------------------
-    def count_object_contacts():
-        cnt = 0
+    HAND_BODY_KEYWORDS = ("robot0", "hand", "palm", "finger", "thumb", "ff", "mf", "rf", "lf", "th", "wrist", "forearm")
+
+    def is_hand_body_id(bid: int) -> bool:
+        name = (model.body(bid).name or "").lower()
+        return any(k in name for k in HAND_BODY_KEYWORDS)
+
+    def count_object_contacts_split():
+        con_total = 0
+        con_hand  = 0
+        con_env   = 0
         for i in range(data.ncon):
             c = data.contact[i]
-            b1 = int(model.geom_bodyid[int(c.geom1)])
-            b2 = int(model.geom_bodyid[int(c.geom2)])
-            if (b1 == obj_bid and b2 != obj_bid) or (b2 == obj_bid and b1 != obj_bid):
-                cnt += 1
-        return cnt
+            g1 = int(c.geom1)
+            g2 = int(c.geom2)
+            b1 = int(model.geom_bodyid[g1])
+            b2 = int(model.geom_bodyid[g2])
+
+            if (b1 == obj_bid and b2 != obj_bid):
+                con_total += 1
+                if is_hand_body_id(b2): con_hand += 1
+                else: con_env += 1
+            elif (b2 == obj_bid and b1 != obj_bid):
+                con_total += 1
+                if is_hand_body_id(b1): con_hand += 1
+                else: con_env += 1
+
+        return con_total, con_hand, con_env
 
     # -------------------------------
     # RANDOMIZE OBJECT START (XY + yaw)
@@ -233,6 +278,17 @@ def run_for_xml(XML_PATH: str):
             time.sleep(EXTRA_SLEEP_PER_STEP)
 
     # -------------------------------
+    # CE (contact entropy) helper
+    # -------------------------------
+    def contact_entropy(touch_map: dict, eps: float = 1e-12) -> float:
+        vec = np.array([max(0.0, float(touch_map[f])) for f in FINGERS], dtype=float)
+        s = float(np.sum(vec))
+        if s <= eps:
+            return 0.0
+        pvec = vec / s
+        return float(-np.sum(pvec * np.log(pvec + eps)))
+
+    # -------------------------------
     # RUN ONE TRIAL (with metrics)
     # -------------------------------
     def run_trial(theta, seed, viewer=None, do_render=False):
@@ -247,30 +303,22 @@ def run_for_xml(XML_PATH: str):
         smooth = 0.0
         prev_u = np.zeros(model.nu, dtype=float)
 
-        # OPEN
-        # for _ in range(OPEN_STEPS):
-        #     u = np.zeros(model.nu, dtype=float)
-        #     data.ctrl[:] = u
-        #     energy += float(np.sum(u*u))
-        #     smooth += float(np.sum((u-prev_u)**2))
-        #     prev_u = u
-        #     mujoco.mj_step(model, data)
-        #     if viewer is not None and do_render:
-        #         render_step(viewer)
-# OPEN (ждём пока объект опустится до Z_START_CLOSE или пока не истечёт лимит)
+        # OPEN (wait until object drops to Z_START_CLOSE or timeout)
         for _ in range(MAX_OPEN_STEPS):
             u = np.zeros(model.nu, dtype=float)
             data.ctrl[:] = u
-            mujoco.mj_step(model, data)
 
+            energy += float(np.sum(u*u))
+            smooth += float(np.sum((u-prev_u)**2))
+            prev_u = u
+
+            mujoco.mj_step(model, data)
             z_obj = float(data.xpos[obj_bid][2])
             if z_obj <= Z_START_CLOSE:
                 break
 
             if viewer is not None and do_render:
                 render_step(viewer)
-
-
 
         # CLOSE
         last_touch = {f: 0.0 for f in FINGERS}
@@ -289,7 +337,8 @@ def run_for_xml(XML_PATH: str):
             if viewer is not None and do_render:
                 render_step(viewer)
 
-        contacts = int(count_object_contacts())
+        # after close snapshots
+        con_total0, con_hand0, con_env0 = count_object_contacts_split()
         obj_pos = data.xpos[obj_bid].copy()
         z = float(obj_pos[2])
 
@@ -305,6 +354,24 @@ def run_for_xml(XML_PATH: str):
         max_speed = 0.0
         max_drift = 0.0
 
+        # new accumulators (HOLD)
+        hold_con_total = 0
+        hold_con_hand  = 0
+        hold_con_env   = 0
+
+        hold_tip_sums = []
+
+        # CGF / GD + grasp-only slices
+        cgf_streak = 0
+        gd_max = 0
+        drift_grasp = []
+        speed_grasp = []
+        tip_sum_grasp = []
+        ce_grasp = []
+
+        bad_drift_cnt = 0
+        bad_speed_cnt = 0
+
         for _ in range(HOLD_STEPS):
             u = controller_step(t_close=CLOSE_STEPS, theta=theta, latched=latched)
             data.ctrl[:] = u
@@ -315,6 +382,13 @@ def run_for_xml(XML_PATH: str):
 
             mujoco.mj_step(model, data)
 
+            # contacts split this step
+            con_total, con_hand, con_env = count_object_contacts_split()
+            hold_con_total += con_total
+            hold_con_hand  += con_hand
+            hold_con_env   += con_env
+
+            # object kinematics
             p_now = data.xpos[obj_bid]
             v_now = data.cvel[obj_bid][3:6]
             speed = float(np.linalg.norm(v_now))
@@ -323,28 +397,78 @@ def run_for_xml(XML_PATH: str):
             max_speed = max(max_speed, speed)
             max_drift = max(max_drift, drift)
 
-            # стабильность
+            # stability (old metric)
             if (p_now[2] > Z_MIN) and (speed < V_MAX) and (drift < DRIFT_MAX):
                 stable_steps += 1
+
+            # per-step fingertip touches for CGF/CE
+            touch_now = {f: (sensor_sum(FINGERTIP_TOUCH[f]) if touch_present[f] else 0.0) for f in FINGERS}
+            tip_sum_now = float(sum(touch_now.values()))
+            tip_active_now = int(sum(1 for f in FINGERS if touch_now[f] > 0.0))
+            ce_now = contact_entropy(touch_now)
+            hold_tip_sums.append(tip_sum_now)
+
+            # CGF condition: real finger grasp without environment support
+            cgf_now = (tip_active_now >= CGF_MIN_TIP_ACTIVE) and (tip_sum_now >= CGF_TAU_TIP_SUM) and (con_env == 0) and (con_hand > 0)
+
+            if cgf_now:
+                cgf_streak += 1
+                drift_grasp.append(drift)
+                speed_grasp.append(speed)
+                tip_sum_grasp.append(tip_sum_now)
+                ce_grasp.append(ce_now)
+            else:
+                cgf_streak = 0
+
+            gd_max = max(gd_max, cgf_streak)
+
+            if drift > DRIFT_BAD_THR:
+                bad_drift_cnt += 1
+            if speed > SPEED_BAD_THR:
+                bad_speed_cnt += 1
 
             if viewer is not None and do_render:
                 render_step(viewer)
 
         hold_ratio = stable_steps / float(HOLD_STEPS)
 
-        # "реальный" захват: есть хотя бы контакты и хоть какие-то сенсоры
-        real_grasp = (contacts >= MIN_CONTACTS_AFTER_CLOSE) and \
-                     (tip_active >= MIN_TIP_ACTIVE_AFTER_CLOSE) and \
-                     (tip_sum >= MIN_TIP_SUM_AFTER_CLOSE)
+        # EDR over HOLD
+        edr = (hold_con_env / hold_con_total) if hold_con_total > 0 else 0.0
 
-        success = 1 if (hold_ratio >= SUCCESS_HOLD_RATIO and real_grasp) else 0
+        # CGF stable flag (for reporting)
+        cgf_stable = 1 if gd_max >= CGF_STREAK_MIN else 0
+
+        # grasp-only aggregates
+        if len(drift_grasp) > 0:
+            driftP95 = float(np.percentile(drift_grasp, 95))
+            speedP95 = float(np.percentile(speed_grasp, 95))
+            tip_sum_grasp_avg = float(np.mean(tip_sum_grasp))
+            ce_grasp_avg = float(np.mean(ce_grasp))
+        else:
+            driftP95 = 0.0
+            speedP95 = 0.0
+            tip_sum_grasp_avg = 0.0
+            ce_grasp_avg = 0.0
+
+        # "реальный" захват: старое условие (для backward compatibility)
+        real_grasp_old = (con_total0 >= MIN_CONTACTS_AFTER_CLOSE) and \
+                         (tip_active >= MIN_TIP_ACTIVE_AFTER_CLOSE) and \
+                         (tip_sum >= MIN_TIP_SUM_AFTER_CLOSE)
+
+        # SUCCESS: keep your original logic (hold_ratio + old real_grasp),
+        # but now you ALSO have CGF/GD to compare quality.
+        success = 1 if (hold_ratio >= SUCCESS_HOLD_RATIO and real_grasp_old) else 0
 
         return {
-            "contacts": contacts,
-            "tip_active": tip_active,
-            "tip_sum": tip_sum,
-            "palm_sum": palm_sum,
-            "z": z,
+            "contacts": int(con_total0),
+            "contacts_hand": float(hold_con_hand) / float(HOLD_STEPS),
+            "contacts_env": float(hold_con_env) / float(HOLD_STEPS),
+            "contacts_total_avg": float(hold_con_total) / float(HOLD_STEPS),
+
+            "tip_active": int(tip_active),
+            "tip_sum": float(tip_sum),
+            "palm_sum": float(palm_sum),
+            "z": float(z),
             "hold_ratio": float(hold_ratio),
             "max_speed": float(max_speed),
             "max_drift": float(max_drift),
@@ -352,10 +476,25 @@ def run_for_xml(XML_PATH: str):
             "smooth": float(smooth),
             "success": int(success),
             "touch_per_finger": {f: float(last_touch[f]) for f in FINGERS},
+
+            # NEW metrics
+            "CGF_stable": int(cgf_stable),
+            "GD": int(gd_max),
+            "EDR": float(edr),
+            "driftP95_grasp": float(driftP95),
+            "speedP95_grasp": float(speedP95),
+            "tip_sum_grasp_avg": float(tip_sum_grasp_avg),
+            "CE_grasp_avg": float(ce_grasp_avg),
+
+            # diagnostics
+            "bad_drift_ratio": float(bad_drift_cnt) / float(HOLD_STEPS),
+            "bad_speed_ratio": float(bad_speed_cnt) / float(HOLD_STEPS),
+            "hold_tip_avg": float(np.mean(tip_sum_grasp)) if len(tip_sum_grasp) else 0.0,
+            "opp": 0,  # keep field for compatibility if you later add opposition
         }
 
     # -------------------------------
-    # SCORE FUNCTION
+    # SCORE FUNCTION (unchanged)
     # -------------------------------
     def score_metrics(m):
         score = 0.0
@@ -380,8 +519,7 @@ def run_for_xml(XML_PATH: str):
         return float(score)
 
     # -------------------------------
-    # eval_theta: 5 траев на theta (как ты просила)
-    # + можно отрендерить только 1-й трай
+    # eval_theta: 5 trials per theta
     # -------------------------------
     def eval_theta(theta, base_seed, viewer=None, render_one=False):
         scores = []
@@ -395,23 +533,21 @@ def run_for_xml(XML_PATH: str):
         return float(np.mean(scores)), metrics_pack
 
     # -------------------------------
-    # BASELINES + RANDOM SEARCH (как в твоём коде)
+    # BASELINES + RANDOM SEARCH
     # -------------------------------
     rng = np.random.default_rng(123)
 
     baseline_A = np.array([1.0, 1.0, 1.0, max(1.0, LF_MIN), 1.0, 0.010, 0.30], dtype=float)
     baseline_B = np.array([1.2, 0.9, 0.9, max(1.15, LF_MIN), 1.4, 0.010, 0.30], dtype=float)
 
-    # ---------- VIEWER STARTS IMMEDIATELY ----------
     with mujoco.viewer.launch_passive(model, data) as viewer:
         p("Viewer opened.")
 
-        # прогрев окна
+        # warmup steps (no long sleep)
         for _ in range(20):
             data.ctrl[:] = 0.0
             mujoco.mj_step(model, data)
             viewer.sync()
-            time.sleep(.2)
 
         p("--- Evaluate baselines ---")
         sA, mA = eval_theta(baseline_A, SEED0 + 10000, viewer=viewer, render_one=RENDER_BASELINES)
@@ -442,8 +578,6 @@ def run_for_xml(XML_PATH: str):
             if s > best_score:
                 best_theta, best_score, best_pack = theta, s, pack
                 p(f"[NEW BEST] it={it:03d} score={best_score:.4f} theta={best_theta}")
-
-                # сразу показать новый best одним трейлом
                 _ = eval_theta(best_theta, SEED0 + 900000 + it, viewer=viewer, render_one=True)
 
         p("==============================")
@@ -453,7 +587,7 @@ def run_for_xml(XML_PATH: str):
         p(f"best_theta=[wFF,wMF,wRF,wLF,wTH, th_touch, k_hold]={best_theta}")
 
         # -------------------------------
-        # SHOW BEST IN VIEWER (5 trials визуально)
+        # SHOW BEST (VISUAL) + OUTPUT LIKE BASE
         # -------------------------------
         p(f"--- Visualize best_theta ({VISUAL_TRIALS} trials) ---")
         all_visual = []
@@ -462,24 +596,55 @@ def run_for_xml(XML_PATH: str):
             all_visual.append(m)
 
             tp = m["touch_per_finger"]
-            p(f"TRIAL {t}: SUCCESS={m['success']} hold={m['hold_ratio']:.2f} con={m['contacts']} "
-              f"z={m['z']:.3f} drift={m['max_drift']:.3f} speed={m['max_speed']:.3f} "
-              f"tip_active={m['tip_active']} tip_sum={m['tip_sum']:.3f} "
-              f"FF={tp['FF']:.3f} MF={tp['MF']:.3f} RF={tp['RF']:.3f} LF={tp['LF']:.3f} TH={tp['TH']:.3f}")
+            # formatting like BASE
+            p(
+                f"TRIAL {t}: "
+                f"SUCCESS={m['success']} hold={m['hold_ratio']:.2f} "
+                f"con_hand={m['contacts_hand']:.2f} con_env={m['contacts_env']:.2f} con={m['contacts']} "
+                f"z={m['z']:.3f} "
+                f"drift={m['max_drift']:.3f} speed={m['max_speed']:.3f} "
+                f"driftP95={m['driftP95_grasp']:.3f} speedP95={m['speedP95_grasp']:.3f} "
+                f"bad_drift={m['bad_drift_ratio']:.2f} bad_speed={m['bad_speed_ratio']:.2f} "
+                f"tip_active={m['tip_active']} tip_sum={m['tip_sum']:.3f} palm_sum={m['palm_sum']:.3f} "
+                f"hold_tip_avg={m['tip_sum_grasp_avg']:.3f} streak={m['GD']} "
+                f"EDR={m['EDR']:.2f} CGF={m['CGF_stable']} CEg={m['CE_grasp_avg']:.3f} tipg={m['tip_sum_grasp_avg']:.3f} "
+                f"opp={m['opp']} "
+                f"energy={m['energy']:.1f} smooth={m['smooth']:.1f} "
+                f"FF={tp['FF']:.3f} MF={tp['MF']:.3f} RF={tp['RF']:.3f} LF={tp['LF']:.3f} TH={tp['TH']:.3f}"
+            )
 
+        # VISUAL SUMMARY (like BASE)
         succ_rate = float(np.mean([m["success"] for m in all_visual]))
-        avg_contacts = float(np.mean([m["contacts"] for m in all_visual]))
-        avg_hold = float(np.mean([m["hold_ratio"] for m in all_visual]))
+        avg_con   = float(np.mean([m["contacts"] for m in all_visual]))
+        avg_hand  = float(np.mean([m["contacts_hand"] for m in all_visual]))
+        avg_env   = float(np.mean([m["contacts_env"] for m in all_visual]))
+        avg_hold  = float(np.mean([m["hold_ratio"] for m in all_visual]))
+        avg_drift = float(np.mean([m["max_drift"] for m in all_visual]))
+        avg_dp95  = float(np.mean([m["driftP95_grasp"] for m in all_visual]))
+        avg_sp95  = float(np.mean([m["speedP95_grasp"] for m in all_visual]))
+        avg_gd    = float(np.mean([m["GD"] for m in all_visual]))
+        avg_edr   = float(np.mean([m["EDR"] for m in all_visual]))
+        avg_ceg   = float(np.mean([m["CE_grasp_avg"] for m in all_visual]))
+        avg_tipg  = float(np.mean([m["tip_sum_grasp_avg"] for m in all_visual]))
+        avg_cgf   = float(np.mean([m["CGF_stable"] for m in all_visual]))
+
         p("==============================")
-        p(" VISUAL SUMMARY")
+        p(" SUMMARY (all trials)")
         p("==============================")
-        p(f"Success rate: {succ_rate:.2f} | Avg contacts: {avg_contacts:.2f} | Avg hold_ratio: {avg_hold:.2f}")
+        p(f"Success rate: {succ_rate:.2f}")
+        p(f"Avg contacts (total): {avg_con:.2f}")
+        p(f"Avg contacts_hand: {avg_hand:.2f} | Avg contacts_env: {avg_env:.2f}")
+        p(f"Avg hold_ratio: {avg_hold:.2f}")
+        p(f"Avg max_drift: {avg_drift:.3f}")
+        p(f"Avg driftP95: {avg_dp95:.3f} | Avg speedP95: {avg_sp95:.3f}")
+        p(f"Avg GD: {avg_gd:.1f} | Avg CGF_stable: {avg_cgf:.2f} | Avg EDR: {avg_edr:.2f}")
+        p(f"Avg CE@Grasp: {avg_ceg:.3f} | Avg tip_sum@Grasp: {avg_tipg:.3f}")
 
         p("Close the viewer window to continue to next XML.")
         while viewer.is_running():
             mujoco.mj_step(model, data)
             viewer.sync()
-            time.sleep(3)
+            time.sleep(0.02)
 
     return {
         "xml": XML_PATH,

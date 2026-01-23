@@ -68,7 +68,7 @@
         <include file="robot_touch_sensors_92.xml"/>
 
         <!-- ================= CLOCK OBJECT ================= -->
-        <body name="object" pos="0 -.4 .2">
+        <body name="object" pos="0 -.4 .5">
 
             <geom name="clock_visual"
                   type="mesh"

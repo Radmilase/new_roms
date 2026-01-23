@@ -25,7 +25,7 @@
 
         <include file="robot_touch_sensors_92.xml"></include>
 
-        <body name="object" pos="0 -0.4 .2">
+        <body name="object" pos="0 -0.4 .5">
             <geom name="object" type="box" size="0.025 0.025 0.025" material="material:object" condim="4" density="567"></geom>
             <geom name="object_hidden" type="box" size="0.024 0.024 0.024" material="material:hidden" condim="4" contype="0" conaffinity="0" mass="0"></geom>
             <site name="object:center" pos="0 0 0" rgba="1 0 0 0" size="0.01 0.01 0.01"></site>
