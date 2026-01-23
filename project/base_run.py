@@ -19,12 +19,12 @@ CLOSE_STEPS = 120
 HOLD_STEPS  = 200
 
 
-TH_TOUCH       = 0.01   # per-finger touch "active" threshold
-TAU_TIP_SUM    = 0.05   # minimal total fingertip signal for "real contact"
-MIN_TIP_ACTIVE = 2      # at least N fingers active
+TH_TOUCH       = 0.01   
+TAU_TIP_SUM    = 0.05  
+MIN_TIP_ACTIVE = 2     
 
-CGF_STREAK_MIN = 10     # CGF streak needed for "stable" flag
-GD_SUCCESS_MIN = 50     # max CGF streak needed for "success"
+CGF_STREAK_MIN = 10     
+GD_SUCCESS_MIN = 50    
 
 # Viewer sync sleep
 SLEEP_OPEN  = 0.002
@@ -179,7 +179,6 @@ def randomize_object_pose(seed: int):
 
 
 
-# Fingertip touch reading
 
 CANON_PRESENT = {f: (FINGERTIP_TOUCH_CANON[f] in sensor_slices) for f in FINGERS}
 use_canon = all(CANON_PRESENT.values())
