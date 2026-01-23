@@ -37,6 +37,10 @@
 ### Базовый скрипт
 Код  5 попыток захвата с простым управлением: открытие-закрытие-удержание. Считает метрики качества такие, как контакты руки и среды, устойчивость удержания, дрейф и скорость объекта, а также активность тактильных сенсоров пальцев.
 Критерий успеха учитывает стабильность, отсутствие опоры на окружение и наличие реального захвата кончиками пальцев с участием большого пальца.
+![Видео без названия — сделано в Clipchamp (3)](https://github.com/user-attachments/assets/8eb48f09-970d-453f-b363-c55ff481bd1a)
+![Видео без названия — сделано в Clipchamp (4)](https://github.com/user-attachments/assets/bbd678cb-bea1-4657-a24d-28e17e9569c3)
+![яйц](https://github.com/user-attachments/assets/1371aad4-f905-45a0-a49d-333d58fd1fd6)
+![база куб](https://github.com/user-attachments/assets/507d0152-a14d-4e8e-b06b-08e4e9f0a807)
 
 
 
@@ -77,7 +81,11 @@ $k_{\text{hold}}$ — коэффициент дополнительного ус
 
 
 
-![clock](https://github.com/user-attachments/assets/60f102ed-7384-4e38-969c-0cc9ad1e1920)
+
+![Видео без названия — сделано в Clipchamp (8)](https://github.com/user-attachments/assets/472860ec-343b-4ee3-9d62-46f22e168b46)
+![Видео без названия — сделано в Clipchamp (6)](https://github.com/user-attachments/assets/719cd063-582e-4ef4-b00c-ef2ef72553d8)
+![Видео без названия — сделано в Clipchamp (8)](https://github.com/user-attachments/assets/d843dd94-b8a3-4622-aa59-d8d62f06f0fa)
+![Видео без названия — сделано в Clipchamp (9)](https://github.com/user-attachments/assets/d6166ec1-f888-40e1-bdf0-9382405d7db9)
 
 #### Оптимизация параметров
 Для подбора параметров используется случайный поиск (random search):
