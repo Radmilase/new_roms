@@ -98,7 +98,7 @@ def run_for_xml(XML_PATH: str):
     obj_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, OBJ_JOINT_NAME)
     if obj_jid < 0:
         raise RuntimeError(f"[{xml_tag}] Joint '{OBJ_JOINT_NAME}' not found. Check your XML joint name.")
-    obj_qpos_adr = int(model.jnt_qposadr[obj_jid])  # free joint: qpos[adr:adr+7]
+    obj_qpos_adr = int(model.jnt_qposadr[obj_jid])  
 
 
     sensor_slices = {}
