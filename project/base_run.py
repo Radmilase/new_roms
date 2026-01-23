@@ -1,28 +1,3 @@
-# ============================================================
-# Shadow Dexterous Hand (BASE) — grasp trials + robust NEW metrics
-# FIXED VERSION:
-#   - Trials are DIFFERENT (randomize object free-joint each trial)
-#   - Object detection is ROBUST (by BODY name "object" or fallback)
-#   - Contacts split is ROBUST (by object BODY id, not keyword-in-geom)
-#   - Fingertip touch is ROBUST (uses your canonical sensor names when present,
-#     otherwise falls back to "touch sensors grouped by finger substring")
-#
-# Metrics:
-#   - CGF  (Contact Grasp Flag): grasp condition per step (fingertip contact + hand contact + no env support)
-#   - GD   (Grasp Duration): max consecutive CGF streak during HOLD
-#   - CE   (Contact Entropy): entropy of fingertip touch distribution across 5 fingers
-#   - Drift@Grasp (P95): 95th percentile drift during CGF steps
-#   - Speed@Grasp (P95): 95th percentile speed during CGF steps
-#   - EDR  (Environment Dependency Ratio): env_contacts / total_object_contacts over HOLD
-#   - Avg tip_sum@Grasp: average total fingertip signal during CGF steps
-#   - Also prints avg contact rates per step
-#
-# Notes:
-#   - Works for: manipulate_block_touch_sensors.xml / manipulate_pen_touch_sensors.xml /
-#                manipulate_egg_touch_sensors.xml / hand_manipulate_clock.xml (if sensors exist)
-#   - If your scene has no touch sensors, tip metrics will be ~0 (that's expected).
-# ============================================================
-
 import os
 import time
 import numpy as np
@@ -30,12 +5,9 @@ import mujoco
 import mujoco.viewer
 
 
-# -------------------------------
-# CONFIG
-# -------------------------------
 ROOT_DIR = r"C:\Users\rad\itmo\new_roms"
 
-# Choose ONE:
+
 # XML_PATH = os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_block_touch_sensors.xml")
 XML_PATH = os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml")
 # XML_PATH = os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml")
@@ -46,7 +18,7 @@ OPEN_STEPS  = 40
 CLOSE_STEPS = 120
 HOLD_STEPS  = 200
 
-# --- grasp definition thresholds ---
+
 TH_TOUCH       = 0.01   # per-finger touch "active" threshold
 TAU_TIP_SUM    = 0.05   # minimal total fingertip signal for "real contact"
 MIN_TIP_ACTIVE = 2      # at least N fingers active
@@ -59,16 +31,15 @@ SLEEP_OPEN  = 0.002
 SLEEP_CLOSE = 0.002
 SLEEP_HOLD  = 0.004
 
-# --- trial randomization ---
-BASE_SEED = 12345
-XY_SIGMA = 0.010            # meters
-YAW_RANGE = np.deg2rad(25)  # radians
-Z_OFFSET_RANGE = (0.0, 0.0) # e.g. (0.0, 0.02) if you want vary height too
 
-# Which actuators are fingers (ShadowHand): 0-1 wrist, 2..19 fingers
+BASE_SEED = 12345
+XY_SIGMA = 0.010            
+YAW_RANGE = np.deg2rad(25)  
+Z_OFFSET_RANGE = (0.0, 0.0) 
+
+
 FINGER_ACTUATORS = list(range(2, 20))
 
-# Canonical fingertip sensors (your v3 naming) — if they exist, we use them
 FINGERTIP_TOUCH_CANON = {
     "FF": "robot0:ST_Tch_fftip",
     "MF": "robot0:ST_Tch_mftip",
@@ -78,7 +49,7 @@ FINGERTIP_TOUCH_CANON = {
 }
 FINGERS = ["FF", "MF", "RF", "LF", "TH"]
 
-# Contact classification (hand vs env) by body name keywords
+
 HAND_BODY_KEYWORDS = [
     "robot0", "hand", "palm", "finger", "thumb",
     "ff", "mf", "rf", "lf", "th",
@@ -89,9 +60,7 @@ print("XML exists:", os.path.exists(XML_PATH))
 print("XML:", XML_PATH)
 
 
-# -------------------------------
-# LOAD MODEL
-# -------------------------------
+
 model = mujoco.MjModel.from_xml_path(XML_PATH)
 data  = mujoco.MjData(model)
 
@@ -100,9 +69,8 @@ print("\nScene loaded successfully")
 print(f"Bodies={model.nbody} Joints={model.njnt} Actuators={model.nu} Sensors={model.nsensor} timestep={DT}")
 
 
-# -------------------------------
-# SENSOR SLICES (universal)
-# -------------------------------
+
+# SENSOR SLICES 
 sensor_slices = {}
 off = 0
 for i in range(model.nsensor):
@@ -124,16 +92,16 @@ def is_touch_sensor(i: int) -> bool:
 touch_sensor_names = [model.sensor(i).name for i in range(model.nsensor) if is_touch_sensor(i)]
 print("Touch sensors count:", len(touch_sensor_names))
 
-# Heuristic palm sensors (optional)
+# Heuristic palm sensors 
 PALM_SENSOR_NAMES = [
     n for n in sensor_slices.keys()
     if ("ts_palm" in (n or "").lower()) or ("palm" in (n or "").lower())
 ]
 
 
-# -------------------------------
+
 # OBJECT BODY FINDING (robust)
-# -------------------------------
+
 def find_object_body_id(model) -> int:
     # Prefer exact "object"
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object")
@@ -157,11 +125,11 @@ else:
     print("Object body:", model.body(OBJECT_BODY_ID).name, "| id=", OBJECT_BODY_ID)
 
 
-# -------------------------------
-# Find object's FREE joint qpos address (for randomization)
-# -------------------------------
+
+# Find object's FREE joint qpos address 
+
 def find_free_joint_qposadr_for_body(model, body_id: int):
-    # free joint: type == mjJNT_FREE, qpos has 7 dims (pos(3)+quat(4))
+    
     for j in range(model.njnt):
         if int(model.jnt_bodyid[j]) != int(body_id):
             continue
@@ -181,7 +149,7 @@ if OBJECT_BODY_ID >= 0:
 
 
 def randomize_object_pose(seed: int):
-    """Perturb object FREE joint: x,y Gaussian; yaw uniform; optional z uniform."""
+   
     if OBJ_FREE_QPOSADR is None:
         return
     rng = np.random.default_rng(seed)
@@ -210,17 +178,14 @@ def randomize_object_pose(seed: int):
     mujoco.mj_forward(model, data)
 
 
-# -------------------------------
-# Fingertip touch reading (robust)
-# -------------------------------
-# Strategy:
-#  1) If canonical sensors exist -> use them directly (best).
-#  2) Else -> group all touch sensors by finger substrings 'ff','mf','rf','lf','th'.
+
+# Fingertip touch reading
+
 CANON_PRESENT = {f: (FINGERTIP_TOUCH_CANON[f] in sensor_slices) for f in FINGERS}
 use_canon = all(CANON_PRESENT.values())
 print("Canonical fingertip sensors present:", CANON_PRESENT, "| use_canon =", use_canon)
 
-# fallback grouping by touch sensor names
+
 finger_touch_sensor_ids = {f: [] for f in FINGERS}
 if not use_canon:
     # Map finger -> substrings in sensor name
@@ -248,11 +213,11 @@ def read_touch_by_finger() -> dict:
             out[f] = sensor_sum_by_name(FINGERTIP_TOUCH_CANON[f])
         return out
 
-    # fallback: sum all touch sensors mapped to finger
+    
     for f in FINGERS:
         s = 0.0
         for sid in finger_touch_sensor_ids[f]:
-            # sensor slice via adr/dim (safe for scalar touch)
+            
             adr = int(np.asarray(model.sensor(sid).adr).item())
             dim = int(np.asarray(model.sensor(sid).dim).item())
             s += float(np.sum(data.sensordata[adr:adr+dim]))
@@ -260,9 +225,9 @@ def read_touch_by_finger() -> dict:
     return out
 
 
-# -------------------------------
-# Contact helpers (ROBUST by object BODY id)
-# -------------------------------
+
+# Contact helpers 
+
 def body_name(body_id: int) -> str:
     return (model.body(body_id).name or "")
 
@@ -302,9 +267,6 @@ def get_object_contacts_split_by_body(obj_body_id: int):
     return con_total, con_hand, con_env
 
 
-# -------------------------------
-# Drift & Speed helpers
-# -------------------------------
 def object_pos_world() -> np.ndarray:
     if OBJECT_BODY_ID < 0:
         return np.array([np.nan, np.nan, np.nan], dtype=float)
@@ -317,9 +279,6 @@ def object_speed_world() -> float:
     return float(np.linalg.norm(v))
 
 
-# -------------------------------
-# Entropy helper
-# -------------------------------
 def contact_entropy(touch_by_finger: dict, eps: float = 1e-12) -> float:
     vec = np.array([max(0.0, float(touch_by_finger[f])) for f in FINGERS], dtype=float)
     s = float(np.sum(vec))
@@ -329,9 +288,6 @@ def contact_entropy(touch_by_finger: dict, eps: float = 1e-12) -> float:
     return float(-np.sum(p * np.log(p + eps)))
 
 
-# -------------------------------
-# Reset helper
-# -------------------------------
 def reset_simulation(seed: int, viewer):
     mujoco.mj_resetData(model, data)
     mujoco.mj_forward(model, data)
@@ -340,21 +296,18 @@ def reset_simulation(seed: int, viewer):
     time.sleep(0.15)
 
 
-# -------------------------------
-# LAUNCH VIEWER
-# -------------------------------
 viewer = mujoco.viewer.launch_passive(model, data)
 
-print("\n==============================")
+
 print(" BASE EVALUATION (robust metrics + randomized trials)")
-print("==============================")
+
 
 for trial in range(NUM_TRIALS):
     trial_seed = BASE_SEED + 1000 * trial
 
-    print("\n==============================")
+   
     print(f" TRIAL {trial + 1}/{NUM_TRIALS} (seed={trial_seed})")
-    print("==============================")
+  
 
     reset_simulation(trial_seed, viewer)
 
@@ -415,10 +368,6 @@ for trial in range(NUM_TRIALS):
         hold_tip_sums.append(tip_sum)
         hold_entropies.append(ce)
 
-        # CGF: real grasp step definition
-        # - enough fingertip involvement
-        # - there is at least one hand contact with the object
-        # - no environment contact with the object in this step (no support)
         cgf_now = (tip_active >= MIN_TIP_ACTIVE) and (tip_sum >= TAU_TIP_SUM) and (con_hand > 0) and (con_env == 0)
 
         cgf_streak = (cgf_streak + 1) if cgf_now else 0
@@ -436,7 +385,7 @@ for trial in range(NUM_TRIALS):
             grasp_tip_sums.append(tip_sum)
             grasp_entropies.append(ce)
 
-    # Summary metrics
+    # Summary 
     edr = (hold_con_env / hold_con_total) if hold_con_total > 0 else 0.0
     cgf_stable = int(gd_max >= CGF_STREAK_MIN)
     success = int(gd_max >= GD_SUCCESS_MIN)
@@ -455,7 +404,7 @@ for trial in range(NUM_TRIALS):
     tip_sum_avg_hold = float(np.mean(hold_tip_sums)) if hold_tip_sums else 0.0
     ce_avg_hold = float(np.mean(hold_entropies)) if hold_entropies else 0.0
 
-    # Per-step average contact rates (easier to read)
+ 
     contacts_total_per_step = (hold_con_total / HOLD_STEPS) if HOLD_STEPS > 0 else 0.0
     contacts_hand_per_step  = (hold_con_hand  / HOLD_STEPS) if HOLD_STEPS > 0 else 0.0
     contacts_env_per_step   = (hold_con_env   / HOLD_STEPS) if HOLD_STEPS > 0 else 0.0

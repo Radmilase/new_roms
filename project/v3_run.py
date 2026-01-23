@@ -29,10 +29,9 @@ import mujoco.viewer
 ROOT_DIR = r"C:\Users\rad\itmo\new_roms"
 
 XML_LIST = [
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "v3_manipulate_block_touch_sensors.xml"),
+    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_block_touch_sensors.xml"),
     # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml"),
     os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml"),
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "v3_hand_manipulate_clock.xml")
 ]
 
 # -------------------------------
