@@ -51,7 +51,19 @@
 Какие параметры мы оптимизируем
 Каждому пальцу захвата задаётся свой вес усилия (wFF, wMF, wRF, wLF, wTH).
 Управление происходит за счет ветором параметров 
-![123](https://github.com/user-attachments/assets/7e5cac61-0ab7-4043-a063-a8b533c5855b)
+\[
+\boldsymbol{\theta} =
+\left[
+w_{FF},
+w_{MF},
+w_{RF},
+w_{LF},
+w_{TH},
+\; th_{\text{touch}},
+\; k_{\text{hold}}
+\right]
+\]
+
 
 
 ![clock](https://github.com/user-attachments/assets/60f102ed-7384-4e38-969c-0cc9ad1e1920)
