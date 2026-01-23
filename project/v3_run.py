@@ -1,31 +1,10 @@
-# ============================================================
-# Shadow Dexterous Hand (V3) — multi-XML random search + NEW grasp metrics
-# Adds (per trial + visual summary, formatted like BASE):
-#   - CGF (Contact Grasp Flag)
-#   - GD  (Grasp Duration = max CGF streak)
-#   - CE@Grasp (Contact Entropy during CGF)
-#   - Drift@Grasp (P95)
-#   - Speed@Grasp (P95)
-#   - EDR (Environment Dependency Ratio)
-#   - Avg tip_sum@Grasp
-#
-# Output format: like your BASE:
-#   SUCCESS=... hold=... con_hand=... con_env=... con=... z=...
-#   drift=... speed=... driftP95=... speedP95=...
-#   bad_drift=... bad_speed=... tip_active=... tip_sum=... palm_sum=...
-#   hold_tip_avg=... streak=GD ... EDR=... CGF=... CEg=... tipg=...
-#   + per-finger touches FF..TH
-# ============================================================
+
 
 import os, time
 import numpy as np
 import mujoco
 import mujoco.viewer
 
-
-# -------------------------------
-# PATHS
-# -------------------------------
 ROOT_DIR = r"C:\Users\rad\itmo\new_roms"
 
 XML_LIST = [
@@ -34,9 +13,7 @@ XML_LIST = [
     os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml"),
 ]
 
-# -------------------------------
-# EPISODE CONFIG
-# -------------------------------
+
 OPEN_STEPS  = 40
 CLOSE_STEPS = 120
 HOLD_STEPS  = 200
@@ -50,14 +27,11 @@ V_MAX      = 2.0
 DRIFT_MAX  = 0.25
 SUCCESS_HOLD_RATIO = 0.90
 
-# дополнительные ограничения на "реальный" захват (для success)
+
 MIN_CONTACTS_AFTER_CLOSE = 3
 MIN_TIP_ACTIVE_AFTER_CLOSE = 1
 MIN_TIP_SUM_AFTER_CLOSE    = 0.25
 
-# -------------------------------
-# NEW GRASP METRIC CONFIG (CGF/GD/CE/DriftP95/SpeedP95/EDR/tip_sum@grasp)
-# -------------------------------
 # CGF thresholding
 CGF_MIN_TIP_ACTIVE = 2
 CGF_TAU_TIP_SUM    = 0.05   # порог "суммарного контакта" для grasp
@@ -67,35 +41,26 @@ CGF_STREAK_MIN     = 10     # минимальная длина непрерыв
 DRIFT_BAD_THR = 0.10
 SPEED_BAD_THR = 0.80
 
-# -------------------------------
-# OPTIMIZER CONFIG
-# -------------------------------
 EVAL_TRIALS_PER_THETA = 5
 RANDOM_ITERS = 25
 SEED0 = 2000
 
-# -------------------------------
-# SCORE WEIGHTS
-# -------------------------------
+
 LAMBDA_ENERGY = 1e-4
 LAMBDA_SMOOTH = 1e-3
 LAMBDA_DRIFT  = 1.0
 
-# search ranges
 TH_TOUCH_RANGE = (0.001, 0.05)
 K_HOLD_RANGE   = (0.10, 0.60)
 W_RANGE        = (0.5, 1.5)
 
-# ---- LF (мизинец) усиление ----
 LF_MIN = 1.10
 LF_RANGE = (1.10, 1.80)
 BONUS_LF_TOUCH  = 0.02
 BONUS_LF_ACTIVE = 0.08
 PENALTY_NO_LF   = 0.15
 
-# -------------------------------
-# RENDER SETTINGS
-# -------------------------------
+
 SLOWDOWN = 2.0
 RENDER_BASELINES = True
 RENDER_EVERY_N_THETA = 10
@@ -114,9 +79,7 @@ def run_for_xml(XML_PATH: str):
     if not os.path.exists(XML_PATH):
         raise FileNotFoundError(XML_PATH)
 
-    # -------------------------------
-    # LOAD MODEL
-    # -------------------------------
+
     model = mujoco.MjModel.from_xml_path(XML_PATH)
     data  = mujoco.MjData(model)
 
@@ -126,9 +89,6 @@ def run_for_xml(XML_PATH: str):
     p("Scene loaded successfully")
     p(f"Bodies={model.nbody} Joints={model.njnt} Actuators={model.nu} Sensors={model.nsensor} timestep={DT}")
 
-    # -------------------------------
-    # OBJECT IDs
-    # -------------------------------
     OBJ_BODY_NAME  = "object"
     OBJ_JOINT_NAME = "object:joint"
 
@@ -140,9 +100,7 @@ def run_for_xml(XML_PATH: str):
         raise RuntimeError(f"[{xml_tag}] Joint '{OBJ_JOINT_NAME}' not found. Check your XML joint name.")
     obj_qpos_adr = int(model.jnt_qposadr[obj_jid])  # free joint: qpos[adr:adr+7]
 
-    # -------------------------------
-    # BUILD SENSOR SLICES
-    # -------------------------------
+
     sensor_slices = {}
     off = 0
     for i in range(model.nsensor):
@@ -171,9 +129,7 @@ def run_for_xml(XML_PATH: str):
 
     PALM_SENSOR_NAMES = [n for n in sensor_slices.keys() if ("ts_palm" in n.lower()) or ("palm" in n.lower())]
 
-    # -------------------------------
-    # ACTUATORS PER FINGER
-    # -------------------------------
+  
     def build_finger_actuator_map():
         m = {"FF": [], "MF": [], "RF": [], "LF": [], "TH": []}
         for i in range(model.nu):
@@ -188,9 +144,7 @@ def run_for_xml(XML_PATH: str):
     FINGER_ACT = build_finger_actuator_map()
     p(f"Actuators per finger: { {k: len(v) for k, v in FINGER_ACT.items()} }")
 
-    # -------------------------------
-    # CONTACTS: split object contacts into hand vs env
-    # -------------------------------
+
     HAND_BODY_KEYWORDS = ("robot0", "hand", "palm", "finger", "thumb", "ff", "mf", "rf", "lf", "th", "wrist", "forearm")
 
     def is_hand_body_id(bid: int) -> bool:
@@ -219,9 +173,7 @@ def run_for_xml(XML_PATH: str):
 
         return con_total, con_hand, con_env
 
-    # -------------------------------
-    # RANDOMIZE OBJECT START (XY + yaw)
-    # -------------------------------
+
     def set_object_pose_random(seed: int, xy_sigma=0.015, yaw_range=np.deg2rad(25)):
         rng = np.random.default_rng(seed)
         qpos = data.qpos
@@ -244,10 +196,7 @@ def run_for_xml(XML_PATH: str):
         qpos[obj_qpos_adr:obj_qpos_adr+3] = pos
         qpos[obj_qpos_adr+3:obj_qpos_adr+7] = q
 
-    # -------------------------------
-    # CONTROLLER (theta)
-    # theta = [wFF,wMF,wRF,wLF,wTH, th_touch, k_hold]
-    # -------------------------------
+
     def controller_step(t_close, theta, latched):
         w = np.array(theta[:5], dtype=float)
         th_touch = float(theta[5])
@@ -276,9 +225,6 @@ def run_for_xml(XML_PATH: str):
         if EXTRA_SLEEP_PER_STEP > 0:
             time.sleep(EXTRA_SLEEP_PER_STEP)
 
-    # -------------------------------
-    # CE (contact entropy) helper
-    # -------------------------------
     def contact_entropy(touch_map: dict, eps: float = 1e-12) -> float:
         vec = np.array([max(0.0, float(touch_map[f])) for f in FINGERS], dtype=float)
         s = float(np.sum(vec))
@@ -287,9 +233,7 @@ def run_for_xml(XML_PATH: str):
         pvec = vec / s
         return float(-np.sum(pvec * np.log(pvec + eps)))
 
-    # -------------------------------
-    # RUN ONE TRIAL (with metrics)
-    # -------------------------------
+
     def run_trial(theta, seed, viewer=None, do_render=False):
         mujoco.mj_resetData(model, data)
         mujoco.mj_forward(model, data)
@@ -302,7 +246,7 @@ def run_for_xml(XML_PATH: str):
         smooth = 0.0
         prev_u = np.zeros(model.nu, dtype=float)
 
-        # OPEN (wait until object drops to Z_START_CLOSE or timeout)
+
         for _ in range(MAX_OPEN_STEPS):
             u = np.zeros(model.nu, dtype=float)
             data.ctrl[:] = u
@@ -319,7 +263,7 @@ def run_for_xml(XML_PATH: str):
             if viewer is not None and do_render:
                 render_step(viewer)
 
-        # CLOSE
+   
         last_touch = {f: 0.0 for f in FINGERS}
         for t in range(1, CLOSE_STEPS + 1):
             u = controller_step(t_close=t, theta=theta, latched=latched)
@@ -336,7 +280,7 @@ def run_for_xml(XML_PATH: str):
             if viewer is not None and do_render:
                 render_step(viewer)
 
-        # after close snapshots
+      
         con_total0, con_hand0, con_env0 = count_object_contacts_split()
         obj_pos = data.xpos[obj_bid].copy()
         z = float(obj_pos[2])
@@ -347,7 +291,6 @@ def run_for_xml(XML_PATH: str):
 
         palm_sum = float(np.sum([sensor_sum(n) for n in PALM_SENSOR_NAMES])) if len(PALM_SENSOR_NAMES) else 0.0
 
-        # HOLD
         pos_ref = obj_pos.copy()
         stable_steps = 0
         max_speed = 0.0
@@ -431,13 +374,12 @@ def run_for_xml(XML_PATH: str):
 
         hold_ratio = stable_steps / float(HOLD_STEPS)
 
-        # EDR over HOLD
         edr = (hold_con_env / hold_con_total) if hold_con_total > 0 else 0.0
 
-        # CGF stable flag (for reporting)
+
         cgf_stable = 1 if gd_max >= CGF_STREAK_MIN else 0
 
-        # grasp-only aggregates
+
         if len(drift_grasp) > 0:
             driftP95 = float(np.percentile(drift_grasp, 95))
             speedP95 = float(np.percentile(speed_grasp, 95))
@@ -449,13 +391,10 @@ def run_for_xml(XML_PATH: str):
             tip_sum_grasp_avg = 0.0
             ce_grasp_avg = 0.0
 
-        # "реальный" захват: старое условие (для backward compatibility)
         real_grasp_old = (con_total0 >= MIN_CONTACTS_AFTER_CLOSE) and \
                          (tip_active >= MIN_TIP_ACTIVE_AFTER_CLOSE) and \
                          (tip_sum >= MIN_TIP_SUM_AFTER_CLOSE)
 
-        # SUCCESS: keep your original logic (hold_ratio + old real_grasp),
-        # but now you ALSO have CGF/GD to compare quality.
         success = 1 if (hold_ratio >= SUCCESS_HOLD_RATIO and real_grasp_old) else 0
 
         return {
@@ -492,9 +431,7 @@ def run_for_xml(XML_PATH: str):
             "opp": 0,  # keep field for compatibility if you later add opposition
         }
 
-    # -------------------------------
-    # SCORE FUNCTION (unchanged)
-    # -------------------------------
+
     def score_metrics(m):
         score = 0.0
         score += 2.0 * m["success"]
@@ -517,9 +454,6 @@ def run_for_xml(XML_PATH: str):
         score -= LAMBDA_SMOOTH * m["smooth"]
         return float(score)
 
-    # -------------------------------
-    # eval_theta: 5 trials per theta
-    # -------------------------------
     def eval_theta(theta, base_seed, viewer=None, render_one=False):
         scores = []
         metrics_pack = []
@@ -531,9 +465,6 @@ def run_for_xml(XML_PATH: str):
             scores.append(score_metrics(m))
         return float(np.mean(scores)), metrics_pack
 
-    # -------------------------------
-    # BASELINES + RANDOM SEARCH
-    # -------------------------------
     rng = np.random.default_rng(123)
 
     baseline_A = np.array([1.0, 1.0, 1.0, max(1.0, LF_MIN), 1.0, 0.010, 0.30], dtype=float)
@@ -579,15 +510,13 @@ def run_for_xml(XML_PATH: str):
                 p(f"[NEW BEST] it={it:03d} score={best_score:.4f} theta={best_theta}")
                 _ = eval_theta(best_theta, SEED0 + 900000 + it, viewer=viewer, render_one=True)
 
-        p("==============================")
+   
         p(" BEST RESULT")
-        p("==============================")
+
         p(f"best_score={best_score:.4f}")
         p(f"best_theta=[wFF,wMF,wRF,wLF,wTH, th_touch, k_hold]={best_theta}")
 
-        # -------------------------------
-        # SHOW BEST (VISUAL) + OUTPUT LIKE BASE
-        # -------------------------------
+ 
         p(f"--- Visualize best_theta ({VISUAL_TRIALS} trials) ---")
         all_visual = []
         for t in range(1, VISUAL_TRIALS + 1):
@@ -627,9 +556,9 @@ def run_for_xml(XML_PATH: str):
         avg_tipg  = float(np.mean([m["tip_sum_grasp_avg"] for m in all_visual]))
         avg_cgf   = float(np.mean([m["CGF_stable"] for m in all_visual]))
 
-        p("==============================")
+
         p(" SUMMARY (all trials)")
-        p("==============================")
+
         p(f"Success rate: {succ_rate:.2f}")
         p(f"Avg contacts (total): {avg_con:.2f}")
         p(f"Avg contacts_hand: {avg_hand:.2f} | Avg contacts_env: {avg_env:.2f}")
