@@ -33,12 +33,12 @@ MIN_CONTACTS_AFTER_CLOSE = 3
 MIN_TIP_ACTIVE_AFTER_CLOSE = 1
 MIN_TIP_SUM_AFTER_CLOSE    = 0.25
 
-# CGF thresholding
+
 CGF_MIN_TIP_ACTIVE = 2
 CGF_TAU_TIP_SUM    = 0.05  
 CGF_STREAK_MIN     = 10    
 
-# For "bad drift / bad speed" counters (diagnostic)
+
 DRIFT_BAD_THR = 0.10
 SPEED_BAD_THR = 0.80
 
