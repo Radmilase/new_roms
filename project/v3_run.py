@@ -8,9 +8,10 @@ import mujoco.viewer
 ROOT_DIR = r"C:\Users\rad\itmo\new_roms"
 
 XML_LIST = [
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_block_touch_sensors.xml"),
-    # os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml"),
+    os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_block_touch_sensors.xml"),
+    os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_egg_touch_sensors.xml"),
     os.path.join(ROOT_DIR, "project", "models", "hand", "manipulate_pen_touch_sensors.xml"),
+    os.path.join(ROOT_DIR, "project", "models", "hand", "hand_manipulate_clock.xml")
 ]
 
 
@@ -34,8 +35,8 @@ MIN_TIP_SUM_AFTER_CLOSE    = 0.25
 
 # CGF thresholding
 CGF_MIN_TIP_ACTIVE = 2
-CGF_TAU_TIP_SUM    = 0.05   # порог "суммарного контакта" для grasp
-CGF_STREAK_MIN     = 10     # минимальная длина непрерывного grasp, чтобы считать CGF_stable=1
+CGF_TAU_TIP_SUM    = 0.05  
+CGF_STREAK_MIN     = 10    
 
 # For "bad drift / bad speed" counters (diagnostic)
 DRIFT_BAD_THR = 0.10
